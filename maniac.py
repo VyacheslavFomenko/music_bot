@@ -18,8 +18,9 @@ def run_bot():
 
     @client.event
     async def on_ready():
-        print('We have logged in as {0.user}'.format(client.user))
+        print(f'{client.user} logged in ')
 
+    @client.event
     async def on_message(message):
         if message.content.startswith("/play"):
             try:
