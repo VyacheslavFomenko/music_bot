@@ -1,64 +1,114 @@
 import discord
 import os
 import yt_dlp
+from discord.ext import commands
 from dotenv import load_dotenv
 import asyncio
 
-def run_bot():
-    load_dotenv()
-    TOKEN = os.getenv('DISCORD_TOKEN')
-    intents = discord.Intents.all()
-    intents.message_content = True
-    client = discord.Client(intents=intents)
-    voice_clients = {}
-    yt_dl_options = {"format": "bestaudio"}
-    ytdl = yt_dlp.YoutubeDL(yt_dl_options)
-    ffmpeg_options = {"options": "-vn"}
+load_dotenv()
 
-    @client.event
-    async def on_ready():
-        print(f'{client.user} logged in and ready!')
 
-    @client.event
-    async def on_message(message):
-        if message.author.bot:
+class MusicBot(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
+
+    @commands.command(name="join")
+    async def join(self, ctx):
+        try:
+            if ctx.author.voice:
+                channel = ctx.author.voice.channel
+                if ctx.guild.voice_client is None:
+                    await channel.connect()
+                    await ctx.send(f"{channel.name} joined")
+                else:
+                    await ctx.send("I'm already connected to a voice channel!")
+            else:
+                await ctx.send("You must be in a voice channel to use this command.")
+
+        except Exception as e:
+            await ctx.send(e)
+
+    @commands.command(name="play")
+    async def play(self, ctx, url: str):
+        if ctx.author.voice is None:
+            await ctx.send("You should be in channel to use bot")
             return
 
-        if message.content.startswith("/play"):
-            try:
-                if message.guild.id in voice_clients and voice_clients[message.guild.id].is_connected():
-                    voice_client = voice_clients[message.guild.id]
-                else:
-                    voice_client = await message.author.voice.channel.connect()
-                    voice_clients[message.guild.id] = voice_client
+        vc = ctx.guild.voice_client
 
-                url = message.content.split()[1]
+        if vc is None:
+            await ctx.invoke(self.bot.get_command("join"))
+            vc = ctx.guild.voice_client
+
+        yt_dl_options = {
+            "format": "bestaudio/best",
+            "quiet": True,
+            "no_warnings": True,
+            "geo_bypass": True,
+            "nocheckcertificate": True,
+            "postprocessors": [{
+                "key": "FFmpegExtractAudio",
+                "preferredcodec": "mp3",
+                "preferredquality": "192"
+            }],
+        }
+        ytdl = yt_dlp.YoutubeDL(yt_dl_options)
+        ffmpeg_options = {
+            'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
+            'options': '-vn'
+        }
+
+        try:
+            with yt_dlp.YoutubeDL(yt_dl_options) as ytdl:
                 data = await asyncio.get_event_loop().run_in_executor(None, lambda: ytdl.extract_info(url, download=False))
-                song = data['url']
-                player = discord.FFmpegPCMAudio(song, **ffmpeg_options)
-                voice_clients[message.guild.id].play(player)
+                song = data["url"]
+                title = data["title"]
+                await ctx.send(f"Now playing: **{title}**")
+        except Exception as e:
+            await ctx.send(e)
+            return
 
-            except Exception as e:
-                print(f"Error in /play: {e}")
+        player = discord.FFmpegPCMAudio(song, **ffmpeg_options)
+        vc.play(player)
 
-        elif message.content.startswith("/pause"):
-            try:
-                voice_clients[message.guild.id].pause()
-            except Exception as e:
-                print(f"Error in /pause: {e}")
+    @commands.command(name="pause")
+    async def pause(self, ctx):
+        vc = ctx.guild.voice_client
+        try:
+            if vc.is_playing():
+                vc.pause()
+        except Exception as e:
+            print(f"Error in pause: {e}")
 
-        elif message.content.startswith("/resume"):
-            try:
-                voice_clients[message.guild.id].resume()
-            except Exception as e:
-                print(f"Error in /resume: {e}")
+    @commands.command(name="resume")
+    async def resume(self, ctx):
+        vc = ctx.guild.voice_client
+        try:
+            if vc:
+                vc.resume()
+        except Exception as e:
+            print(f"Error in pause: {e}")
 
-        elif message.content.startswith("/stop"):
-            try:
-                voice_clients[message.guild.id].stop()
-                await voice_clients[message.guild.id].disconnect()
-                del voice_clients[message.guild.id]
-            except Exception as e:
-                print(f"Error in /stop: {e}")
+    @commands.command(name="stop")
+    async def resume(self, ctx):
+        vc = ctx.guild.voice_client
+        try:
+            if vc:
+                vc.disconnect()
+        except Exception as e:
+            print(f"Error in pause: {e}")
 
-    client.run(TOKEN)
+intents = discord.Intents.all()
+intents.message_content = True
+
+bot = commands.Bot(command_prefix="/", intents=intents)
+
+
+@bot.event
+async def on_ready():
+    print(f'{bot.user} logged in and ready!')
+    await bot.add_cog(MusicBot(bot))
+
+
+TOKEN = os.getenv('DISCORD_TOKEN')
+bot.run(TOKEN)
