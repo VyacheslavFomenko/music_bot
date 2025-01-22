@@ -1,3 +1,5 @@
+from asyncio import queues
+
 import discord
 import os
 import yt_dlp
@@ -11,6 +13,7 @@ load_dotenv()
 class MusicBot(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.queues = {}
 
     @commands.command(name="join")
     async def join(self, ctx):
@@ -28,6 +31,9 @@ class MusicBot(commands.Cog):
         except Exception as e:
             await ctx.send(e)
 
+    def get_audio_url(url):
+        pass
+
     @commands.command(name="play")
     async def play(self, ctx, url: str):
         if ctx.author.voice is None:
@@ -39,6 +45,11 @@ class MusicBot(commands.Cog):
         if vc is None:
             await ctx.invoke(self.bot.get_command("join"))
             vc = ctx.guild.voice_client
+
+
+        guild_id = ctx.guild.id
+        if guild_id not in self.queues:
+            self.queues[guild_id] = []
 
         yt_dl_options = {
             "format": "bestaudio/best",
@@ -52,7 +63,6 @@ class MusicBot(commands.Cog):
                 "preferredquality": "192"
             }],
         }
-        ytdl = yt_dlp.YoutubeDL(yt_dl_options)
         ffmpeg_options = {
             'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
             'options': '-vn'
@@ -61,6 +71,7 @@ class MusicBot(commands.Cog):
         try:
             with yt_dlp.YoutubeDL(yt_dl_options) as ytdl:
                 data = await asyncio.get_event_loop().run_in_executor(None, lambda: ytdl.extract_info(url, download=False))
+                print(data)
                 song = data["url"]
                 title = data["title"]
                 await ctx.send(f"Now playing: **{title}**")
